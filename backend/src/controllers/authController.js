@@ -1,6 +1,6 @@
 const axios = require('axios');
-const jwt   = require('jsonwebtoken');
-const User  = require('../models/User');
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 
 /**
  * GET /api/auth/linkedin/callback
@@ -8,16 +8,29 @@ const User  = require('../models/User');
  */
 const linkedinCallback = async (req, res, next) => {
   try {
-    const { code } = req.query;
+    const { code, state } = req.query;
     if (!code) return res.status(400).json({ success: false, error: 'Missing auth code', code: 'BAD_REQUEST' });
+
+    // Decode the state payload (intent + tier) encoded during OAuth initiation
+    let intent = null;
+    let tier = null;
+    if (state) {
+      try {
+        const decoded = JSON.parse(Buffer.from(state, 'base64').toString('utf8'));
+        intent = decoded.intent || null;
+        tier = decoded.tier || null;
+      } catch (_) {
+        // Malformed state — ignore, fall back to default redirect
+      }
+    }
 
     // Exchange code for access token
     const tokenRes = await axios.post('https://www.linkedin.com/oauth/v2/accessToken', null, {
       params: {
-        grant_type:    'authorization_code',
+        grant_type: 'authorization_code',
         code,
-        redirect_uri:  process.env.LINKEDIN_REDIRECT_URI,
-        client_id:     process.env.LINKEDIN_CLIENT_ID,
+        redirect_uri: process.env.LINKEDIN_REDIRECT_URI,
+        client_id: process.env.LINKEDIN_CLIENT_ID,
         client_secret: process.env.LINKEDIN_CLIENT_SECRET,
       },
     });
@@ -34,8 +47,8 @@ const linkedinCallback = async (req, res, next) => {
     ]);
 
     const linkedinId = profileRes.data.id;
-    const name       = `${profileRes.data.localizedFirstName} ${profileRes.data.localizedLastName}`;
-    const email      = emailRes.data.elements[0]['handle~'].emailAddress;
+    const name = `${profileRes.data.localizedFirstName} ${profileRes.data.localizedLastName}`;
+    const email = emailRes.data.elements[0]['handle~'].emailAddress;
 
     // Upsert user
     const user = await User.findOneAndUpdate(
@@ -58,6 +71,15 @@ const linkedinCallback = async (req, res, next) => {
     });
 
     res.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${token}`);
+
+    // After setting the JWT cookie: redirect based on intent
+    if (intent === 'subscribe') {
+      const billingUrl = new URL(`${process.env.FRONTEND_URL}/billing`);
+      if (tier) billingUrl.searchParams.set('tier', tier);
+      return res.redirect(billingUrl.toString());
+    }
+
+    return res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
   } catch (err) {
     next(err);
   }

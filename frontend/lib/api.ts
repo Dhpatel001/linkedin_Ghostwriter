@@ -11,9 +11,9 @@ api.interceptors.response.use(
     (err) => {
         const status = err.response?.status;
         if (status === 401) {
-            // Session expired — go home
+            // Session expired — send to login, not home
             if (typeof window !== 'undefined') {
-                window.location.href = '/';
+                window.location.href = '/login?error=session_expired';
             }
         }
         if (status === 402) {
