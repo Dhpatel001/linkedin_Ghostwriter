@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { sendApiError } = require('../utils/apiError');
 
 /**
  * Verifies the JWT from either the Authorization header or the auth cookie.
@@ -11,7 +12,7 @@ const authenticate = (req, res, next) => {
   const token = headerToken || cookieToken;
 
   if (!token) {
-    return res.status(401).json({ success: false, error: 'No token provided', code: 'UNAUTHORIZED' });
+    return sendApiError(res, 401, 'No token provided', 'UNAUTHORIZED');
   }
 
   try {
@@ -19,7 +20,7 @@ const authenticate = (req, res, next) => {
     req.user = decoded;
     next();
   } catch (err) {
-    return res.status(401).json({ success: false, error: 'Invalid or expired token', code: 'TOKEN_INVALID' });
+    return sendApiError(res, 401, 'Invalid or expired token', 'TOKEN_INVALID');
   }
 };
 

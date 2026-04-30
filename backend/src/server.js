@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const { connectDB } = require('./config/db');
 const { errorHandler } = require('./middleware/errorHandler');
+const { sendApiError } = require('./utils/apiError');
 
 const authRoutes    = require('./routes/auth');
 const postRoutes    = require('./routes/posts');
@@ -42,7 +43,7 @@ app.use('/api/billing', billingRoutes);
 
 // 404 catch-all
 app.use('*', (req, res) =>
-  res.status(404).json({ success: false, error: 'Route not found', code: 'NOT_FOUND' })
+  sendApiError(res, 404, 'Route not found', 'NOT_FOUND')
 );
 
 // Centralised error handler — must be last middleware

@@ -1,6 +1,8 @@
 /**
  * Centralised error handler — must be the LAST middleware registered in server.js
  */
+const { sendApiError } = require('../utils/apiError');
+
 const errorHandler = (err, req, res, next) => {
   // Log for debugging (omit stack in production)
   if (process.env.NODE_ENV !== 'production') {
@@ -13,11 +15,7 @@ const errorHandler = (err, req, res, next) => {
   const message    = err.message || 'Internal Server Error';
   const code       = err.code    || 'INTERNAL_ERROR';
 
-  return res.status(statusCode).json({
-    success: false,
-    error:   message,
-    code,
-  });
+  return sendApiError(res, statusCode, message, code);
 };
 
 module.exports = { errorHandler };

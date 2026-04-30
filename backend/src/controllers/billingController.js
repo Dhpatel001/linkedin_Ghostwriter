@@ -1,6 +1,7 @@
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const User = require('../models/User');
+const { sendApiError } = require('../utils/apiError');
 
 const PLAN_MAP = {
   starter: process.env.RAZORPAY_PLAN_STARTER,
@@ -50,11 +51,11 @@ const createSubscription = async (req, res, next) => {
   try {
     const { tier } = req.body;
     if (!Object.prototype.hasOwnProperty.call(PLAN_MAP, tier)) {
-      return res.status(400).json({ success: false, error: 'Invalid subscription tier', code: 'VALIDATION_ERROR' });
+      return sendApiError(res, 400, 'Invalid subscription tier', 'VALIDATION_ERROR');
     }
 
     const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ success: false, error: 'User not found', code: 'NOT_FOUND' });
+    if (!user) return sendApiError(res, 404, 'User not found', 'NOT_FOUND');
 
     const planId = PLAN_MAP[tier];
     const razorpay = getRazorpayClient();
@@ -78,11 +79,7 @@ const createSubscription = async (req, res, next) => {
 
       const checkoutUrl = subscription.short_url || subscription.auth_link || subscription.hosted_url || null;
       if (!checkoutUrl) {
-        return res.status(502).json({
-          success: false,
-          error: 'Razorpay did not return a checkout URL',
-          code: 'BILLING_PROVIDER_ERROR',
-        });
+        return sendApiError(res, 502, 'Razorpay did not return a checkout URL', 'BILLING_PROVIDER_ERROR');
       }
 
       return res.json({
@@ -95,11 +92,12 @@ const createSubscription = async (req, res, next) => {
     }
 
     if (process.env.NODE_ENV === 'production') {
-      return res.status(503).json({
-        success: false,
-        error: 'Billing is not configured yet. Add Razorpay credentials to enable checkout.',
-        code: 'BILLING_NOT_CONFIGURED',
-      });
+      return sendApiError(
+        res,
+        503,
+        'Billing is not configured yet. Add Razorpay credentials to enable checkout.',
+        'BILLING_NOT_CONFIGURED'
+      );
     }
 
     user.subscriptionTier = tier;
@@ -123,7 +121,7 @@ const createSubscription = async (req, res, next) => {
 const getStatus = async (req, res, next) => {
   try {
     let user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ success: false, error: 'User not found', code: 'NOT_FOUND' });
+    if (!user) return sendApiError(res, 404, 'User not found', 'NOT_FOUND');
 
     user = await syncSubscriptionState(user);
     res.json({ success: true, data: buildBillingPayload(user) });
@@ -136,12 +134,12 @@ const getStatus = async (req, res, next) => {
 const cancelSubscription = async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ success: false, error: 'User not found', code: 'NOT_FOUND' });
+    if (!user) return sendApiError(res, 404, 'User not found', 'NOT_FOUND');
 
     const razorpay = getRazorpayClient();
 
     if (!user.razorpaySubscriptionId && user.subscriptionStatus !== 'active') {
-      return res.status(400).json({ success: false, error: 'No active subscription', code: 'NO_SUBSCRIPTION' });
+      return sendApiError(res, 400, 'No active subscription', 'NO_SUBSCRIPTION');
     }
 
     if (razorpay && user.razorpaySubscriptionId) {
@@ -160,8 +158,15 @@ const cancelSubscription = async (req, res, next) => {
 /** POST /api/billing/webhook -> Razorpay webhook (raw body) */
 const handleWebhook = async (req, res, next) => {
   try {
+    if (!process.env.RAZORPAY_WEBHOOK_SECRET) {
+      return sendApiError(res, 503, 'Webhook secret is not configured', 'WEBHOOK_NOT_CONFIGURED');
+    }
+
     const signature = req.headers['x-razorpay-signature'];
     const body = req.body;
+    if (!signature || !body || !Buffer.isBuffer(body)) {
+      return sendApiError(res, 400, 'Malformed webhook request', 'WEBHOOK_INVALID_REQUEST');
+    }
 
     const expectedSig = crypto
       .createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET)
@@ -169,11 +174,19 @@ const handleWebhook = async (req, res, next) => {
       .digest('hex');
 
     if (signature !== expectedSig) {
-      return res.status(400).json({ success: false, error: 'Invalid webhook signature' });
+      return sendApiError(res, 400, 'Invalid webhook signature', 'WEBHOOK_INVALID_SIGNATURE');
     }
 
-    const event = JSON.parse(body.toString());
+    let event = null;
+    try {
+      event = JSON.parse(body.toString('utf8'));
+    } catch (_) {
+      return sendApiError(res, 400, 'Invalid webhook payload', 'WEBHOOK_INVALID_PAYLOAD');
+    }
     const { event: eventName, payload } = event;
+    if (!eventName || !payload) {
+      return sendApiError(res, 400, 'Webhook payload is missing required fields', 'WEBHOOK_INVALID_PAYLOAD');
+    }
 
     if (eventName === 'subscription.activated') {
       const subEntity = payload.subscription.entity;
@@ -200,7 +213,7 @@ const handleWebhook = async (req, res, next) => {
       );
     }
 
-    res.json({ received: true });
+    res.json({ success: true, data: { received: true } });
   } catch (err) {
     next(err);
   }

@@ -1,8 +1,72 @@
 const axios = require('axios');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const User = require('../models/User');
+const { sendApiError } = require('../utils/apiError');
 
 const TRIAL_LENGTH_DAYS = 7;
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+
+function getOAuthStateSecret() {
+  return process.env.OAUTH_STATE_SECRET || process.env.JWT_SECRET;
+}
+
+function signOAuthStatePayload(payload) {
+  const secret = getOAuthStateSecret();
+  if (!secret) return null;
+  return crypto.createHmac('sha256', secret).update(payload).digest('hex');
+}
+
+function createOAuthState(input = {}) {
+  const payload = {
+    intent: input.intent || null,
+    tier: input.tier || null,
+    next: getSafeNextPath(input.next),
+    iat: Date.now(),
+    exp: Date.now() + OAUTH_STATE_TTL_MS,
+    nonce: crypto.randomBytes(12).toString('hex'),
+  };
+  const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = signOAuthStatePayload(encoded);
+  if (!signature) return null;
+  return `${encoded}.${signature}`;
+}
+
+function decodeOAuthState(state) {
+  if (!state || typeof state !== 'string' || !state.includes('.')) {
+    return { valid: false, reason: 'invalid_format' };
+  }
+
+  const [encoded, signature] = state.split('.');
+  const expected = signOAuthStatePayload(encoded);
+  if (!expected || !signature) {
+    return { valid: false, reason: 'invalid_signature' };
+  }
+
+  const received = Buffer.from(signature, 'utf8');
+  const computed = Buffer.from(expected, 'utf8');
+  if (received.length !== computed.length || !crypto.timingSafeEqual(received, computed)) {
+    return { valid: false, reason: 'invalid_signature' };
+  }
+
+  try {
+    const decoded = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+    if (!decoded.exp || Date.now() > decoded.exp) {
+      return { valid: false, reason: 'state_expired' };
+    }
+
+    return {
+      valid: true,
+      data: {
+        intent: decoded.intent || null,
+        tier: decoded.tier || null,
+        next: getSafeNextPath(decoded.next),
+      },
+    };
+  } catch (_) {
+    return { valid: false, reason: 'invalid_payload' };
+  }
+}
 
 function getSafeNextPath(value) {
   if (typeof value !== 'string') return null;
@@ -63,7 +127,7 @@ const linkedinCallback = async (req, res, next) => {
     }
 
     if (!code) {
-      return res.status(400).json({ success: false, error: 'Missing auth code', code: 'BAD_REQUEST' });
+      return sendApiError(res, 400, 'Missing auth code', 'BAD_REQUEST');
     }
 
     let intent = null;
@@ -71,14 +135,13 @@ const linkedinCallback = async (req, res, next) => {
     let nextPath = null;
 
     if (state) {
-      try {
-        const decoded = JSON.parse(Buffer.from(state, 'base64').toString('utf8'));
-        intent = decoded.intent || null;
-        tier = decoded.tier || null;
-        nextPath = getSafeNextPath(decoded.next);
-      } catch (_) {
-        // Ignore malformed state payloads and continue the default flow.
+      const parsedState = decodeOAuthState(state);
+      if (!parsedState.valid) {
+        return res.redirect(`${process.env.FRONTEND_URL}/login?error=invalid_state`);
       }
+      intent = parsedState.data.intent;
+      tier = parsedState.data.tier;
+      nextPath = parsedState.data.next;
     }
 
     const tokenRes = await axios.post('https://www.linkedin.com/oauth/v2/accessToken', null, {
@@ -150,7 +213,7 @@ const linkedinCallback = async (req, res, next) => {
 const getMe = async (req, res, next) => {
   try {
     let user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ success: false, error: 'User not found', code: 'NOT_FOUND' });
+    if (!user) return sendApiError(res, 404, 'User not found', 'NOT_FOUND');
 
     user = await syncSubscriptionState(user);
     res.json({ success: true, data: user.toObject() });
@@ -165,7 +228,7 @@ const getMe = async (req, res, next) => {
 const updateMe = async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ success: false, error: 'User not found', code: 'NOT_FOUND' });
+    if (!user) return sendApiError(res, 404, 'User not found', 'NOT_FOUND');
 
     if (typeof req.body.name === 'string' && req.body.name.trim()) {
       user.name = req.body.name.trim();
@@ -196,19 +259,11 @@ const updateMe = async (req, res, next) => {
     if (settings.postsPerWeek != null) {
       const postsPerWeek = Number(settings.postsPerWeek);
       if (!Number.isInteger(postsPerWeek) || postsPerWeek < 1 || postsPerWeek > 5) {
-        return res.status(400).json({
-          success: false,
-          error: 'postsPerWeek must be an integer between 1 and 5',
-          code: 'VALIDATION_ERROR',
-        });
+        return sendApiError(res, 400, 'postsPerWeek must be an integer between 1 and 5', 'VALIDATION_ERROR');
       }
 
       if (postsPerWeek === 5 && !['scale', 'global'].includes(user.subscriptionTier || '')) {
-        return res.status(400).json({
-          success: false,
-          error: '5 posts per week requires the Scale or Global plan',
-          code: 'PLAN_RESTRICTED',
-        });
+        return sendApiError(res, 400, '5 posts per week requires the Scale or Global plan', 'PLAN_RESTRICTED');
       }
 
       user.settings.postsPerWeek = postsPerWeek;
@@ -235,4 +290,4 @@ const logout = (req, res) => {
   res.json({ success: true, message: 'Logged out' });
 };
 
-module.exports = { linkedinCallback, getMe, updateMe, logout };
+module.exports = { linkedinCallback, getMe, updateMe, logout, createOAuthState };
