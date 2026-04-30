@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { Suspense } from 'react';
+import { buildLinkedInEntryPath } from '@/lib/auth';
 
 /* ─── Error messages ────────────────────────────────────────── */
 const ERROR_MESSAGES: Record<string, string> = {
@@ -19,22 +20,25 @@ function LoginContent() {
     const searchParams = useSearchParams();
     const error = searchParams.get('error');
     const reason = searchParams.get('reason');
+    const next = searchParams.get('next');
     const [isLoading, setIsLoading] = useState(false);
+
+    const authUrl = buildLinkedInEntryPath({ next });
 
     // Auto-trigger OAuth if no error — returning users just land here briefly
     useEffect(() => {
         if (!error && !reason) {
             const timer = setTimeout(() => {
                 setIsLoading(true);
-                window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/api/auth/linkedin`;
+                window.location.href = authUrl;
             }, 400);
             return () => clearTimeout(timer);
         }
-    }, [error, reason]);
+    }, [authUrl, error, reason]);
 
     const handleLogin = () => {
         setIsLoading(true);
-        window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/api/auth/linkedin`;
+        window.location.href = authUrl;
     };
 
     const errorMessage =
@@ -124,7 +128,7 @@ function LoginContent() {
                     </button>
 
                     <p className="text-xs text-slate-400 mt-4">
-                        Don't have an account?{' '}
+                        Don&apos;t have an account?{' '}
                         <a href="/" className="text-linkedin font-medium hover:underline">
                             Start free trial
                         </a>

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { Toaster } from 'sonner';
+import { Providers } from '@/components/providers';
 import './globals.css';
 
 const inter = Inter({
@@ -16,8 +17,7 @@ export const metadata: Metadata = {
   keywords: ['LinkedIn', 'AI writing', 'personal brand', 'ghostwriter', 'content'],
   openGraph: {
     title: 'VoicePost — LinkedIn posts that sound exactly like you',
-    description:
-      '3 posts per week. Zero effort. AI learns your voice and writes in it.',
+    description: '3 posts per week. Zero effort. AI learns your voice and writes in it.',
     type: 'website',
     url: 'https://voicepost.in',
   },
@@ -26,20 +26,16 @@ export const metadata: Metadata = {
     title: 'VoicePost',
     description: 'AI LinkedIn ghostwriter that writes in your exact voice.',
   },
-  icons: {
-    icon: '/favicon.ico',
-  },
+  icons: { icon: '/favicon.ico' },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={inter.variable}>
       <body className="font-sans antialiased">
-        {children}
+        <Providers>
+          {children}
+        </Providers>
         <Toaster
           position="bottom-right"
           toastOptions={{
@@ -48,12 +44,7 @@ export default function RootLayout({
               fontSize: '13px',
               borderRadius: '10px',
               border: '1px solid rgba(0,0,0,0.08)',
-              boxShadow:
-                '0 4px 6px rgba(0,0,0,0.06), 0 12px 32px rgba(0,0,0,0.10)',
-            },
-            classNames: {
-              success: 'border-emerald-200 bg-white',
-              error: 'border-red-200 bg-white',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.06), 0 12px 32px rgba(0,0,0,0.10)',
             },
           }}
           richColors

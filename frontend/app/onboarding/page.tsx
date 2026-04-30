@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Sparkles, Check, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import TopicManager from '@/components/TopicManager';
 import api from '@/lib/api';
+import { getErrorMessage } from '@/lib/errors';
 
 /* ─── Types ─────────────────────────────────────────────────── */
 type Step = 1 | 2 | 3 | 4 | 5;
@@ -109,10 +110,10 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
 
             <div className="space-y-3">
                 <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-                    Let's learn how you write
+                    Let&apos;s learn how you write
                 </h1>
                 <p className="text-sm text-slate-500 leading-relaxed max-w-sm mx-auto">
-                    In the next 5 minutes, we'll build your personal voice profile. The AI will
+                    In the next 5 minutes, we&apos;ll build your personal voice profile. The AI will
                     study your past posts and start writing{' '}
                     <span className="font-semibold text-slate-700">exactly like you.</span>
                 </p>
@@ -150,7 +151,7 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
                 className="w-full flex items-center justify-center gap-2 py-3 px-6 text-sm font-semibold text-white bg-linkedin hover:bg-linkedin-hover rounded-[8px] transition-all duration-150 active:scale-[0.98]"
                 style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.12), 0 4px 16px rgba(10,102,194,0.28)' }}
             >
-                Let's build my voice
+                Let&apos;s build my voice
                 <ArrowRight className="w-4 h-4" />
             </button>
         </motion.div>
@@ -229,7 +230,7 @@ function StepPastePosts({
                         <code className="bg-slate-200 px-1 rounded text-[11px]">---</code> on its own line
                     </p>
                     <p className="text-xs text-slate-400">
-                        No past posts? Write 3 posts you'd{' '}
+                        No past posts? Write 3 posts you&apos;d{' '}
                         <span className="italic">want</span> to write — rough drafts are fine.
                     </p>
                 </div>
@@ -313,12 +314,12 @@ function StepTopics({
 function StepAnalyzing() {
     const [msgIndex, setMsgIndex] = useState(0);
 
-    useState(() => {
-        const interval = setInterval(() => {
+    useEffect(() => {
+        const interval = window.setInterval(() => {
             setMsgIndex((i) => (i + 1) % ANALYSIS_MESSAGES.length);
         }, 1800);
-        return () => clearInterval(interval);
-    });
+        return () => window.clearInterval(interval);
+    }, []);
 
     return (
         <motion.div
@@ -414,7 +415,7 @@ function StepProfileReady({
                 </motion.div>
                 <h2 className="text-xl font-bold text-slate-900">This is your writing voice.</h2>
                 <p className="text-sm text-slate-500">
-                    Your first 3 posts will arrive Monday morning. We'll email you when they're ready.
+                    Your first 3 posts will arrive Monday morning. We&apos;ll email you when they&apos;re ready.
                 </p>
             </div>
 
@@ -430,7 +431,7 @@ function StepProfileReady({
                         Your voice
                     </p>
                     <p className="text-sm text-slate-700 leading-relaxed italic">
-                        "{profile.voiceDescription}"
+                        &ldquo;{profile.voiceDescription}&rdquo;
                     </p>
                 </div>
 
@@ -518,15 +519,15 @@ export default function OnboardingPage() {
             const res = await api.post('/api/voice/analyze', { samplePosts, topics });
             setProfile(res.data.data);
             setStep(5);
-        } catch (err: any) {
-            toast.error(err.response?.data?.error || 'Analysis failed. Please try again.');
+        } catch (error: unknown) {
+            toast.error(getErrorMessage(error, 'Analysis failed. Please try again.'));
             setStep(3);
         }
     }, [rawPosts, topics]);
 
     const handleFinish = useCallback(async () => {
         try {
-            await api.patch('/api/auth/me', { settings: { onboardingCompleted: true } });
+            await api.patch('/api/auth/me', { onboardingCompleted: true });
         } catch {
             // non-fatal
         }

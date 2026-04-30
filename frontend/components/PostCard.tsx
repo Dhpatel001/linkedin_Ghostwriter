@@ -38,6 +38,7 @@ interface PostCardProps {
     onEdit: (id: string, content: string) => Promise<void>;
     onMarkPosted: (id: string) => Promise<void>;
     onSavePerformance: (id: string, data: PerformanceData) => Promise<void>;
+    hidePerformance?: boolean; // true for Starter plan — performance tracker gated
 }
 
 type InternalState = 'default' | 'scoring' | 'editing' | 'discard-confirm';
@@ -90,6 +91,7 @@ export default function PostCard({
     onEdit,
     onMarkPosted,
     onSavePerformance,
+    hidePerformance = false,
 }: PostCardProps) {
     const [internalState, setInternalState] = useState<InternalState>('default');
     const [isExpanded, setIsExpanded] = useState(false);
@@ -291,7 +293,7 @@ export default function PostCard({
                         className="mt-4 p-3.5 rounded-[8px] bg-red-50 border border-red-100"
                     >
                         <p className="text-sm font-medium text-red-800 mb-3">
-                            Remove this post? This can't be undone.
+                            Remove this post? This can&apos;t be undone.
                         </p>
                         <div className="flex gap-2">
                             <button
@@ -420,7 +422,7 @@ export default function PostCard({
                 )}
 
                 {/* POSTED actions — performance tracker */}
-                {post.status === 'posted' && (
+                {post.status === 'posted' && !hidePerformance && (
                     <motion.div
                         key="posted-actions"
                         initial={{ opacity: 0, y: 4 }}

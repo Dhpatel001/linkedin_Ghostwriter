@@ -10,22 +10,14 @@ function AuthCallbackContent() {
     const searchParams = useSearchParams();
 
     useEffect(() => {
-        const token  = searchParams.get('token');
+        const next = searchParams.get('next');
         const intent = searchParams.get('intent');
-        const tier   = searchParams.get('tier');
-
-        if (!token) {
-            // No token — something went wrong
-            router.replace('/login?error=auth_failed');
-            return;
-        }
-
-        // Store the JWT in a cookie (7-day expiry, matches backend)
-        const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toUTCString();
-        document.cookie = `voicepost_token=${token}; path=/; expires=${expires}; SameSite=Lax`;
+        const tier = searchParams.get('tier');
 
         // Redirect based on intent
-        if (intent === 'subscribe') {
+        if (next && next.startsWith('/') && !next.startsWith('//')) {
+            router.replace(next);
+        } else if (intent === 'subscribe') {
             const billingUrl = new URL('/billing', window.location.origin);
             if (tier) billingUrl.searchParams.set('tier', tier);
             router.replace(billingUrl.pathname + billingUrl.search);

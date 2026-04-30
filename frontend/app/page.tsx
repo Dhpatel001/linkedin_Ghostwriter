@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { motion, useScroll, useTransform } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   ArrowRight,
   Check,
@@ -13,8 +13,7 @@ import {
   Sparkles,
   Loader2,
 } from 'lucide-react';
-import api from '@/lib/api';
-import { toast } from 'sonner';
+import { buildLinkedInEntryPath } from '@/lib/auth';
 
 /* ─── Types ─────────────────────────────────────────────────── */
 type Tier = 'starter' | 'pro' | 'scale';
@@ -64,7 +63,7 @@ function Nav() {
 
         {/* CTA */}
         <a
-          href="/api/auth/linkedin"
+          href="/login"
           className="flex items-center gap-1.5 py-1.5 px-4 text-sm font-semibold text-white bg-linkedin hover:bg-linkedin-hover rounded-[6px] transition-all duration-150 active:scale-[0.97]"
           style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.10), 0 2px 6px rgba(10,102,194,0.20)' }}
         >
@@ -82,7 +81,7 @@ function Hero() {
 
   const handleOAuth = () => {
     setAuthLoading(true);
-    window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/api/auth/linkedin`;
+    window.location.href = buildLinkedInEntryPath();
   };
 
   return (
@@ -458,7 +457,7 @@ function ProblemSection() {
           Blank page syndrome is real. VoicePost eliminates it.
           <br />
           <span className="text-white font-semibold">
-            You review. You approve. You post. That's it.
+            You review. You approve. You post. That&apos;s it.
           </span>
         </motion.p>
       </div>
@@ -509,7 +508,7 @@ function PricingSection() {
 
   const handleSelect = (tier: Tier) => {
     setLoadingTier(tier);
-    window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/api/auth/linkedin?intent=subscribe&tier=${tier}`;
+    window.location.href = buildLinkedInEntryPath({ intent: 'subscribe', tier });
   };
 
   return (

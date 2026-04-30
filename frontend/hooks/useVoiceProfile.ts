@@ -1,5 +1,5 @@
 import useSWR from 'swr';
-import api from '@/app/fonts/lib/api';
+import api from '@/lib/api';
 
 export interface VoiceProfile {
     voiceDescription: string;

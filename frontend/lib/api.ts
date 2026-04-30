@@ -1,7 +1,8 @@
 import axios from 'axios';
+import { getPublicApiBaseUrl } from '@/lib/auth';
 
 const api = axios.create({
-    baseURL: process.env.NEXT_PUBLIC_API_URL,
+    baseURL: getPublicApiBaseUrl() ?? undefined,
     withCredentials: true, // sends httpOnly cookie automatically — never remove this
     timeout: 15000,
 });

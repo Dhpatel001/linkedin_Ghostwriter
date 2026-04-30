@@ -13,13 +13,15 @@ const PROTECTED_ROUTES = [
 const AUTH_ROUTES = ['/login'];
 
 /* ─── Public routes — always accessible ───────────────────────── */
-// Everything else (/, /privacy, /terms) is public
+// Everything else (/, /privacy, /terms, /contact, /linkedin) is public
 
 export function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
     // Read the httpOnly JWT cookie set by the backend
-    const token = request.cookies.get('voicepost_token')?.value;
+    const token =
+        request.cookies.get('voicepost_token')?.value ??
+        request.cookies.get('token')?.value;
     const isLoggedIn = !!token;
 
     // 1. Protected route + no token → send to login

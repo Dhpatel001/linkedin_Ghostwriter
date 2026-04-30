@@ -1,33 +1,15 @@
-const Anthropic      = require('@anthropic-ai/sdk');
-const VoiceProfile   = require('../models/VoiceProfile');
+const VoiceProfile = require('../models/VoiceProfile');
+const { analyzeVoiceProfile, generatePostFromVoiceProfile } = require('../services/voiceService');
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-/** POST /api/voice/generate — generate a LinkedIn post from voice notes / topic */
+/** POST /api/voice/generate -> generate a LinkedIn post from voice notes / topic */
 const generateFromVoice = async (req, res, next) => {
   try {
     const { topic, tone, length = 'medium', keywords = [] } = req.body;
     if (!topic) return res.status(400).json({ success: false, error: 'topic is required', code: 'VALIDATION_ERROR' });
 
-    const profile = await VoiceProfile.findOne({ user: req.user.id }).lean();
+    const profile = await VoiceProfile.findOne({ userId: req.user.id }).lean();
+    const content = await generatePostFromVoiceProfile({ topic, tone, length, keywords, profile });
 
-    const systemPrompt = profile
-      ? `You are a LinkedIn ghostwriter. Write in the voice described: ${profile.description}`
-      : `You are an expert LinkedIn ghostwriter who creates engaging, professional posts.`;
-
-    const userPrompt = `Write a ${length} LinkedIn post about: "${topic}".
-Tone: ${tone || 'professional and engaging'}.
-${keywords.length ? `Include these keywords naturally: ${keywords.join(', ')}.` : ''}
-Format it with line breaks for readability. Do NOT add hashtags unless asked.`;
-
-    const message = await anthropic.messages.create({
-      model:      'claude-3-5-sonnet-20241022',
-      max_tokens: 1024,
-      system:     systemPrompt,
-      messages:   [{ role: 'user', content: userPrompt }],
-    });
-
-    const content = message.content[0].text;
     res.json({ success: true, data: { content } });
   } catch (err) {
     next(err);
@@ -37,8 +19,46 @@ Format it with line breaks for readability. Do NOT add hashtags unless asked.`;
 /** GET /api/voice/profile */
 const getVoiceProfile = async (req, res, next) => {
   try {
-    const profile = await VoiceProfile.findOne({ user: req.user.id }).lean();
+    const profile = await VoiceProfile.findOne({ userId: req.user.id }).lean();
     res.json({ success: true, data: profile || null });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/** POST /api/voice/analyze */
+const analyzeProfile = async (req, res, next) => {
+  try {
+    const samplePosts = Array.isArray(req.body.samplePosts) ? req.body.samplePosts : [];
+    const topics = Array.isArray(req.body.topics) ? req.body.topics : [];
+    const analysis = await analyzeVoiceProfile(samplePosts, topics);
+
+    const existingProfile = await VoiceProfile.findOne({ userId: req.user.id });
+
+    if (existingProfile) {
+      existingProfile.voiceDescription = analysis.voiceDescription;
+      existingProfile.toneTags = analysis.toneTags;
+      existingProfile.openingStyle = analysis.openingStyle;
+      existingProfile.sentenceLength = analysis.sentenceLength;
+      existingProfile.avgWordCount = analysis.avgWordCount;
+      existingProfile.usesEmoji = analysis.usesEmoji;
+      existingProfile.usesBulletPoints = analysis.usesBulletPoints;
+      existingProfile.signaturePatterns = analysis.signaturePatterns;
+      existingProfile.avoidPatterns = analysis.avoidPatterns;
+      existingProfile.samplePosts = analysis.samplePosts;
+      existingProfile.topicBuckets = analysis.topicBuckets;
+      existingProfile.analysisVersion = (existingProfile.analysisVersion || 1) + 1;
+      await existingProfile.save();
+
+      return res.json({ success: true, data: existingProfile });
+    }
+
+    const profile = await VoiceProfile.create({
+      userId: req.user.id,
+      ...analysis,
+    });
+
+    return res.status(201).json({ success: true, data: profile });
   } catch (err) {
     next(err);
   }
@@ -47,11 +67,27 @@ const getVoiceProfile = async (req, res, next) => {
 /** POST /api/voice/profile */
 const saveVoiceProfile = async (req, res, next) => {
   try {
-    const { description, examples, tone } = req.body;
+    const payload = {
+      voiceDescription: req.body.voiceDescription || req.body.description || null,
+      toneTags: Array.isArray(req.body.toneTags)
+        ? req.body.toneTags
+        : (typeof req.body.tone === 'string' ? [req.body.tone] : []),
+      openingStyle: req.body.openingStyle,
+      sentenceLength: req.body.sentenceLength,
+      avgWordCount: req.body.avgWordCount,
+      usesEmoji: req.body.usesEmoji,
+      usesBulletPoints: req.body.usesBulletPoints,
+      signaturePatterns: req.body.signaturePatterns,
+      avoidPatterns: req.body.avoidPatterns,
+      topicBuckets: req.body.topicBuckets,
+      samplePosts: req.body.samplePosts || req.body.examples,
+      lastUpdated: new Date(),
+    };
+
     const profile = await VoiceProfile.findOneAndUpdate(
-      { user: req.user.id },
-      { $set: { description, examples, tone, updatedAt: new Date() } },
-      { upsert: true, new: true }
+      { userId: req.user.id },
+      { $set: payload },
+      { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: true }
     );
     res.json({ success: true, data: profile });
   } catch (err) {
@@ -59,4 +95,65 @@ const saveVoiceProfile = async (req, res, next) => {
   }
 };
 
-module.exports = { generateFromVoice, getVoiceProfile, saveVoiceProfile };
+/** PATCH /api/voice/topics */
+const updateTopics = async (req, res, next) => {
+  try {
+    const topics = [...new Set((Array.isArray(req.body.topics) ? req.body.topics : []).map((topic) => String(topic).trim()).filter(Boolean))].slice(0, 10);
+    if (!topics.length) {
+      return res.status(400).json({ success: false, error: 'At least one topic is required', code: 'VALIDATION_ERROR' });
+    }
+
+    const profile = await VoiceProfile.findOneAndUpdate(
+      { userId: req.user.id },
+      { $set: { topicBuckets: topics, lastUpdated: new Date() } },
+      { new: true }
+    );
+
+    if (!profile) return res.status(404).json({ success: false, error: 'Voice profile not found', code: 'NOT_FOUND' });
+    res.json({ success: true, data: profile });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/** PATCH /api/voice/regenerate */
+const regenerateProfile = async (req, res, next) => {
+  try {
+    const profile = await VoiceProfile.findOne({ userId: req.user.id });
+    if (!profile) return res.status(404).json({ success: false, error: 'Voice profile not found', code: 'NOT_FOUND' });
+    if (!profile.samplePosts?.length) {
+      return res.status(400).json({
+        success: false,
+        error: 'No stored sample posts found for this user',
+        code: 'VALIDATION_ERROR',
+      });
+    }
+
+    const analysis = await analyzeVoiceProfile(profile.samplePosts, profile.topicBuckets || []);
+    profile.voiceDescription = analysis.voiceDescription;
+    profile.toneTags = analysis.toneTags;
+    profile.openingStyle = analysis.openingStyle;
+    profile.sentenceLength = analysis.sentenceLength;
+    profile.avgWordCount = analysis.avgWordCount;
+    profile.usesEmoji = analysis.usesEmoji;
+    profile.usesBulletPoints = analysis.usesBulletPoints;
+    profile.signaturePatterns = analysis.signaturePatterns;
+    profile.avoidPatterns = analysis.avoidPatterns;
+    profile.topicBuckets = analysis.topicBuckets;
+    profile.analysisVersion = (profile.analysisVersion || 1) + 1;
+    await profile.save();
+
+    res.json({ success: true, data: profile });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = {
+  generateFromVoice,
+  getVoiceProfile,
+  analyzeProfile,
+  saveVoiceProfile,
+  updateTopics,
+  regenerateProfile,
+};

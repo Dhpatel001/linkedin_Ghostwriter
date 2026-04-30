@@ -1,16 +1,19 @@
 const jwt = require('jsonwebtoken');
 
 /**
- * Verifies the JWT from the Authorization header (Bearer token).
+ * Verifies the JWT from either the Authorization header or the auth cookie.
  * Attaches the decoded payload to req.user.
  */
 const authenticate = (req, res, next) => {
   const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
+  const headerToken = header && header.startsWith('Bearer ') ? header.split(' ')[1] : null;
+  const cookieToken = req.cookies?.voicepost_token || req.cookies?.token || null;
+  const token = headerToken || cookieToken;
+
+  if (!token) {
     return res.status(401).json({ success: false, error: 'No token provided', code: 'UNAUTHORIZED' });
   }
 
-  const token = header.split(' ')[1];
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
