@@ -13,12 +13,17 @@ const PostSchema = new mongoose.Schema({
     default: 'pending',
   },
 
+  // Scale/Global plan — AI-generated image for the post
+  imageUrl:         { type: String, default: null },
+  imageGeneratedAt: { type: Date, default: null },
+
   voiceScore:         { type: Number, min: 1, max: 10, default: null },
   voiceScoreFeedback: { type: String, default: null },
 
   generatedAt: { type: Date, default: Date.now },
   approvedAt:  { type: Date, default: null },
   postedAt:    { type: Date, default: null },
+  scheduledFor:{ type: Date, default: null },
 
   // Used to prevent duplicate topic generation in same week
   weekNumber: { type: Number },
@@ -36,6 +41,7 @@ const PostSchema = new mongoose.Schema({
 PostSchema.index({ userId: 1, status: 1 });
 PostSchema.index({ userId: 1, generatedAt: -1 });
 PostSchema.index({ userId: 1, weekNumber: 1, year: 1 });
+PostSchema.index({ userId: 1, scheduledFor: 1 });
 
 // Auto-extract hook (first line) whenever content is set
 PostSchema.pre('save', function (next) {

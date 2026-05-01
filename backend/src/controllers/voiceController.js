@@ -1,5 +1,5 @@
 const VoiceProfile = require('../models/VoiceProfile');
-const { analyzeVoiceProfile, generatePostFromVoiceProfile } = require('../services/voiceService');
+const { analyzeVoiceProfile, analyzeVoiceProfileArtifacts, generatePostFromVoiceProfile } = require('../services/voiceService');
 
 /** POST /api/voice/generate -> generate a LinkedIn post from voice notes / topic */
 const generateFromVoice = async (req, res, next) => {
@@ -40,7 +40,47 @@ const analyzeProfile = async (req, res, next) => {
       existingProfile.toneTags = analysis.toneTags;
       existingProfile.openingStyle = analysis.openingStyle;
       existingProfile.sentenceLength = analysis.sentenceLength;
-      existingProfile.avgWordCount = analysis.avgWordCount;
+      existingProfile.avgWordCount = Math.max(50, analysis.avgWordCount ?? 180);
+      existingProfile.usesEmoji = analysis.usesEmoji;
+      existingProfile.usesBulletPoints = analysis.usesBulletPoints;
+      existingProfile.signaturePatterns = analysis.signaturePatterns;
+      existingProfile.avoidPatterns = analysis.avoidPatterns;
+      existingProfile.samplePosts = analysis.samplePosts;
+      existingProfile.topicBuckets = analysis.topicBuckets;
+      existingProfile.analysisVersion = (existingProfile.analysisVersion || 1) + 1;
+      await existingProfile.save();
+
+      return res.json({ success: true, data: existingProfile });
+    }
+
+    const profile = await VoiceProfile.create({
+      userId: req.user.id,
+      ...analysis,
+    });
+
+    return res.status(201).json({ success: true, data: profile });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/** POST /api/voice/analyze-artifacts (text + screenshots) */
+const analyzeProfileArtifacts = async (req, res, next) => {
+  try {
+    const samplePosts = Array.isArray(req.body.samplePosts) ? req.body.samplePosts : [];
+    const topics = Array.isArray(req.body.topics) ? req.body.topics : [];
+    const images = Array.isArray(req.body.images) ? req.body.images : [];
+
+    const analysis = await analyzeVoiceProfileArtifacts(samplePosts, topics, images);
+
+    const existingProfile = await VoiceProfile.findOne({ userId: req.user.id });
+
+    if (existingProfile) {
+      existingProfile.voiceDescription = analysis.voiceDescription;
+      existingProfile.toneTags = analysis.toneTags;
+      existingProfile.openingStyle = analysis.openingStyle;
+      existingProfile.sentenceLength = analysis.sentenceLength;
+      existingProfile.avgWordCount = Math.max(50, analysis.avgWordCount ?? 180);
       existingProfile.usesEmoji = analysis.usesEmoji;
       existingProfile.usesBulletPoints = analysis.usesBulletPoints;
       existingProfile.signaturePatterns = analysis.signaturePatterns;
@@ -74,7 +114,7 @@ const saveVoiceProfile = async (req, res, next) => {
         : (typeof req.body.tone === 'string' ? [req.body.tone] : []),
       openingStyle: req.body.openingStyle,
       sentenceLength: req.body.sentenceLength,
-      avgWordCount: req.body.avgWordCount,
+      avgWordCount: req.body.avgWordCount != null ? Math.max(50, Number(req.body.avgWordCount) || 50) : undefined,
       usesEmoji: req.body.usesEmoji,
       usesBulletPoints: req.body.usesBulletPoints,
       signaturePatterns: req.body.signaturePatterns,
@@ -134,7 +174,7 @@ const regenerateProfile = async (req, res, next) => {
     profile.toneTags = analysis.toneTags;
     profile.openingStyle = analysis.openingStyle;
     profile.sentenceLength = analysis.sentenceLength;
-    profile.avgWordCount = analysis.avgWordCount;
+    profile.avgWordCount = Math.max(50, analysis.avgWordCount ?? 180);
     profile.usesEmoji = analysis.usesEmoji;
     profile.usesBulletPoints = analysis.usesBulletPoints;
     profile.signaturePatterns = analysis.signaturePatterns;
@@ -153,6 +193,7 @@ module.exports = {
   generateFromVoice,
   getVoiceProfile,
   analyzeProfile,
+  analyzeProfileArtifacts,
   saveVoiceProfile,
   updateTopics,
   regenerateProfile,

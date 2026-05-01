@@ -195,25 +195,32 @@ function SegmentedControl({
 function VoiceProfileSection() {
   const { profile, isLoading, mutate } = useVoiceProfile();
   const [topics, setTopics] = useState<string[]>([]);
+  const [toneTags, setToneTags] = useState<string[]>([]);
+  const [toneInput, setToneInput] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [reanalyzeOpen, setReanalyzeOpen] = useState(false);
   const [isReanalyzing, setIsReanalyzing] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadTextPosts, setUploadTextPosts] = useState<string[]>([]);
+  const [uploadImages, setUploadImages] = useState<{ mediaType: string; data: string }[]>([]);
 
   useEffect(() => {
     if (profile?.topicBuckets) setTopics(profile.topicBuckets);
+    if (profile?.toneTags) setToneTags(profile.toneTags);
   }, [profile]);
 
-  const handleSaveTopics = async () => {
+  const handleSaveVoiceSettings = async () => {
     setIsSaving(true);
     try {
-      await api.patch('/api/voice/topics', { topics });
+      await api.post('/api/voice/profile', { topicBuckets: topics, toneTags });
       mutate();
       setSaved(true);
-      toast.success('Topics updated.');
+      toast.success('Voice profile updated.');
       setTimeout(() => setSaved(false), 2500);
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error, 'Could not save topics.'));
+      toast.error(getErrorMessage(error, 'Could not save voice profile.'));
     } finally {
       setIsSaving(false);
     }
@@ -232,6 +239,73 @@ function VoiceProfileSection() {
       setIsReanalyzing(false);
     }
   };
+
+  const addToneTag = (raw: string) => {
+    const tag = raw.trim().toLowerCase();
+    if (!tag) return;
+    const next = Array.from(new Set([...toneTags, tag])).slice(0, 6);
+    setToneTags(next);
+    setToneInput('');
+  };
+
+  const removeToneTag = (tag: string) => {
+    setToneTags((t) => t.filter((x) => x !== tag));
+  };
+
+  async function readFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploadBusy(true);
+    try {
+      const textPosts: string[] = [];
+      const images: { mediaType: string; data: string }[] = [];
+
+      for (const file of Array.from(files)) {
+        if (file.type.startsWith('image/')) {
+          const dataUrl = await new Promise<string>((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(String(r.result || ''));
+            r.onerror = () => reject(new Error('read failed'));
+            r.readAsDataURL(file);
+          });
+          const base64 = dataUrl.split(',')[1] || '';
+          if (base64) images.push({ mediaType: file.type, data: base64 });
+        } else if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
+          const text = await file.text();
+          const chunks = text
+            .split(/\n{2,}---+\n{2,}|\n{3,}/g)
+            .map((p) => p.trim())
+            .filter((p) => p.length >= 20);
+          textPosts.push(...chunks);
+        }
+      }
+
+      setUploadTextPosts((prev) => Array.from(new Set([...prev, ...textPosts])).slice(0, 50));
+      setUploadImages((prev) => [...prev, ...images].slice(0, 8));
+    } finally {
+      setUploadBusy(false);
+    }
+  }
+
+  async function runUploadAnalysis() {
+    setUploadBusy(true);
+    try {
+      const res = await api.post('/api/voice/analyze-artifacts', {
+        samplePosts: uploadTextPosts,
+        topics,
+        images: uploadImages,
+      });
+      mutate();
+      const updated = res.data?.data;
+      if (updated?.toneTags) setToneTags(updated.toneTags);
+      if (updated?.topicBuckets) setTopics(updated.topicBuckets);
+      toast.success('Voice profile enhanced from uploads.');
+      setUploadOpen(false);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Analysis failed. Try uploading text posts, or configure ANTHROPIC_API_KEY for screenshots.'));
+    } finally {
+      setUploadBusy(false);
+    }
+  }
 
   const TONE_PALETTE = [
     { bg: '#EBF3FB', text: '#004182', border: '#70B5F9' },
@@ -283,18 +357,46 @@ function VoiceProfileSection() {
                 Tone
               </p>
               <div className="flex flex-wrap gap-1.5">
-                {profile.toneTags.map((tag, i) => {
+                {toneTags.map((tag, i) => {
                   const c = TONE_PALETTE[i % TONE_PALETTE.length];
                   return (
                     <span
                       key={tag}
-                      className="px-2.5 py-1 rounded-full text-xs font-semibold border"
+                      className="px-2.5 py-1 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5"
                       style={{ background: c.bg, color: c.text, borderColor: c.border }}
                     >
                       {tag}
+                      <button
+                        type="button"
+                        onClick={() => removeToneTag(tag)}
+                        className="text-[10px] font-bold opacity-70 hover:opacity-100"
+                        aria-label={`Remove tone ${tag}`}
+                      >
+                        ×
+                      </button>
                     </span>
                   );
                 })}
+              </div>
+              <div className="mt-3 flex gap-2">
+                <input
+                  value={toneInput}
+                  onChange={(e) => setToneInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addToneTag(toneInput);
+                    }
+                  }}
+                  placeholder="Add tone tag (e.g. concise, friendly)"
+                  className="flex-1 text-sm text-slate-700 bg-white border border-slate-200 rounded-[8px] px-3 py-2 focus:outline-none"
+                />
+                <button
+                  onClick={() => addToneTag(toneInput)}
+                  className="py-2 px-4 text-sm font-semibold text-linkedin border border-linkedin/20 bg-linkedin-light rounded-[8px]"
+                >
+                  Add
+                </button>
               </div>
             </div>
 
@@ -338,8 +440,14 @@ function VoiceProfileSection() {
                 <RefreshCw className="w-3.5 h-3.5" />
                 Re-analyze with my posts
               </button>
+              <button
+                onClick={() => setUploadOpen(true)}
+                className="flex items-center gap-1.5 text-sm font-medium text-linkedin hover:text-linkedin-hover transition-colors duration-150"
+              >
+                Upload samples
+              </button>
               <SaveButton
-                onClick={handleSaveTopics}
+                onClick={handleSaveVoiceSettings}
                 isSaving={isSaving}
                 saved={saved}
               />
@@ -387,6 +495,54 @@ function VoiceProfileSection() {
               className="py-2 px-4 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-[6px] transition-all duration-150"
             >
               Cancel
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Upload samples dialog */}
+      <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+        <DialogContent className="sm:max-w-md rounded-[14px] border border-slate-200 bg-white p-6">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">
+              Upload LinkedIn samples
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+            Upload <span className="font-semibold">.txt</span> posts or <span className="font-semibold">screenshots</span>.
+            Screenshots require <span className="font-semibold">ANTHROPIC_API_KEY</span>.
+          </p>
+
+          <div className="mt-4 space-y-3">
+            <input
+              type="file"
+              multiple
+              accept=".txt,image/png,image/jpeg,image/webp"
+              onChange={(e) => void readFiles(e.target.files)}
+              disabled={uploadBusy}
+              className="text-sm"
+            />
+
+            <div className="text-xs text-slate-500">
+              Added: <span className="font-semibold text-slate-700">{uploadTextPosts.length}</span> text posts,{' '}
+              <span className="font-semibold text-slate-700">{uploadImages.length}</span> screenshots
+            </div>
+          </div>
+
+          <div className="flex gap-2 mt-6">
+            <button
+              onClick={runUploadAnalysis}
+              disabled={uploadBusy || (uploadTextPosts.length === 0 && uploadImages.length === 0)}
+              className="flex-1 flex items-center justify-center gap-2 py-2 px-4 text-sm font-semibold text-white bg-linkedin hover:bg-linkedin-hover rounded-[8px] disabled:opacity-60"
+            >
+              {uploadBusy ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analyzing…</> : 'Analyze'}
+            </button>
+            <button
+              onClick={() => setUploadOpen(false)}
+              disabled={uploadBusy}
+              className="py-2 px-4 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-[8px]"
+            >
+              Close
             </button>
           </div>
         </DialogContent>
@@ -500,7 +656,10 @@ function AccountSection({ user, onSaved }: { user: UserData; onSaved: () => void
   const [name, setName] = useState(user.name);
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [disconnectOpen, setDisconnectOpen] = useState(false);
+  const [switchAccountOpen, setSwitchAccountOpen] = useState(false);
+  const hasLinkedInSession = Boolean(
+    user.linkedinTokenExpiry && new Date(user.linkedinTokenExpiry).getTime() > Date.now()
+  );
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -535,7 +694,7 @@ function AccountSection({ user, onSaved }: { user: UserData; onSaved: () => void
       <SectionHeader
         icon={<UserIcon className="w-4 h-4" />}
         title="Account"
-        subtitle="Your profile and LinkedIn connection"
+        subtitle="Your profile and LinkedIn sign-in session"
       />
 
       <div className="p-5 space-y-5">
@@ -594,15 +753,29 @@ function AccountSection({ user, onSaved }: { user: UserData; onSaved: () => void
         <div className="flex items-center justify-between py-3 border-y border-slate-100">
           <div>
             <p className="text-sm font-medium text-slate-800">LinkedIn</p>
-            <p className="text-xs text-slate-500">Connected as {user.name}</p>
+            <p className="text-xs text-slate-500">
+              {hasLinkedInSession
+                ? `Connected as ${user.name}`
+                : 'Your LinkedIn session has expired. Reconnect to resume a fresh sign-in session.'}
+            </p>
           </div>
-          <button
-            onClick={() => setDisconnectOpen(true)}
-            className="flex items-center gap-1.5 text-sm font-medium text-red-500 hover:text-red-700 transition-colors duration-150"
-          >
-            <Unlink className="w-3.5 h-3.5" />
-            Disconnect
-          </button>
+          {hasLinkedInSession ? (
+            <button
+              onClick={() => setSwitchAccountOpen(true)}
+              className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors duration-150"
+            >
+              <Unlink className="w-3.5 h-3.5" />
+              Switch account
+            </button>
+          ) : (
+            <a
+              href="/linkedin?next=/settings"
+              className="flex items-center gap-1.5 text-sm font-medium text-linkedin hover:text-linkedin-hover transition-colors duration-150"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Reconnect
+            </a>
+          )}
         </div>
 
         {/* Actions */}
@@ -618,34 +791,40 @@ function AccountSection({ user, onSaved }: { user: UserData; onSaved: () => void
         </div>
       </div>
 
-      {/* Disconnect confirm */}
-      <Dialog open={disconnectOpen} onOpenChange={setDisconnectOpen}>
+      {/* Switch account confirm */}
+      <Dialog open={switchAccountOpen} onOpenChange={setSwitchAccountOpen}>
         <DialogContent className="sm:max-w-sm rounded-[14px] border border-slate-200 bg-white p-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-semibold">
-              <AlertTriangle className="w-4 h-4 text-red-500" />
-              Disconnect LinkedIn?
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              Switch LinkedIn account?
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-slate-600 mt-2 leading-relaxed">
-            This will pause post generation until you reconnect. Your voice
-            profile and posts will be kept.
+            VoicePost uses LinkedIn as your sign-in method. We&apos;ll log you out first,
+            then you can sign back in with the correct LinkedIn account. Your posts and
+            voice profile stay in the app.
           </p>
           <div className="flex gap-2 mt-5">
             <button
-              onClick={() => {
-                toast.info('Contact support to disconnect your LinkedIn account.');
-                setDisconnectOpen(false);
+              onClick={async () => {
+                setSwitchAccountOpen(false);
+                try {
+                  await api.post('/api/auth/logout');
+                } catch {
+                  // continue to login even if logout request fails
+                }
+                window.location.href = '/login?next=/settings';
               }}
-              className="flex-1 py-2 px-4 text-sm font-semibold text-white bg-red-500 hover:bg-red-600 rounded-[6px] transition-all duration-150 active:scale-[0.97]"
+              className="flex-1 py-2 px-4 text-sm font-semibold text-white bg-linkedin hover:bg-linkedin-hover rounded-[6px] transition-all duration-150 active:scale-[0.97]"
             >
-              Disconnect
+              Log out and continue
             </button>
             <button
-              onClick={() => setDisconnectOpen(false)}
+              onClick={() => setSwitchAccountOpen(false)}
               className="py-2 px-4 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-[6px] transition-all"
             >
-              Keep connected
+              Stay here
             </button>
           </div>
         </DialogContent>

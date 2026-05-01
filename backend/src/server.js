@@ -11,6 +11,8 @@ const authRoutes    = require('./routes/auth');
 const postRoutes    = require('./routes/posts');
 const voiceRoutes   = require('./routes/voice');
 const billingRoutes = require('./routes/billing');
+const teamRoutes    = require('./routes/team');
+const linkedinReportRoutes = require('./routes/linkedinReport');
 
 const app = express();
 
@@ -40,6 +42,8 @@ app.use('/api/auth',    authRoutes);
 app.use('/api/posts',   postRoutes);
 app.use('/api/voice',   voiceRoutes);
 app.use('/api/billing', billingRoutes);
+app.use('/api/team',    teamRoutes);
+app.use('/api/linkedin', linkedinReportRoutes);
 
 // 404 catch-all
 app.use('*', (req, res) =>

@@ -4,6 +4,9 @@ import type { NextRequest } from 'next/server';
 /* ─── Routes that require a logged-in session ─────────────────── */
 const PROTECTED_ROUTES = [
     '/dashboard',
+    '/calendar',
+    '/team',
+    '/report',
     '/onboarding',
     '/settings',
     '/billing',

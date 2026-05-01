@@ -2,6 +2,7 @@ const User = require('../models/User');
 const { sendApiError } = require('../utils/apiError');
 
 const ALLOWED_STATUSES = new Set(['active', 'trial']);
+const PLAN_ORDER = ['starter', 'pro', 'scale', 'global'];
 
 async function checkSubscription(req, res, next) {
   try {
@@ -17,7 +18,7 @@ async function checkSubscription(req, res, next) {
       return sendApiError(res, 404, 'User not found', 'NOT_FOUND');
     }
 
-    if (user.subscriptionStatus === 'trial' && user.trialEndsAt && user.trialEndsAt.getTime() < Date.now()) {
+    if (user.subscriptionStatus === 'trial' && user.trialEndsAt && user.trialEndsAt.getTime() <= Date.now()) {
       user.subscriptionStatus = 'expired';
       await user.save();
     }
@@ -42,4 +43,23 @@ async function checkSubscription(req, res, next) {
   }
 }
 
-module.exports = { checkSubscription };
+function requirePlan(minTier) {
+  const requiredIndex = PLAN_ORDER.indexOf(minTier);
+  return (req, res, next) => {
+    const currentTier = req.subscription?.tier;
+    const currentIndex = PLAN_ORDER.indexOf(currentTier);
+
+    if (requiredIndex === -1) return next();
+    if (currentIndex >= requiredIndex) return next();
+
+    return sendApiError(
+      res,
+      403,
+      `This feature requires at least the ${minTier} plan`,
+      'PLAN_RESTRICTED',
+      { requiredPlan: minTier }
+    );
+  };
+}
+
+module.exports = { checkSubscription, requirePlan };

@@ -12,8 +12,22 @@ const PLAN_MAP = {
 
 let razorpayClient = null;
 
+const PLACEHOLDER_PATTERNS = [
+  /your[-_]?key/i,
+  /your[-_]?razorpay/i,
+  /your[-_]?secret/i,
+  /^rzp_test_your/i,
+  /^plan_\w+_id$/i,
+];
+
+function isPlaceholder(value) {
+  if (!value || typeof value !== 'string') return true;
+  return PLACEHOLDER_PATTERNS.some((p) => p.test(value));
+}
+
 function getRazorpayClient() {
   if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) return null;
+  if (isPlaceholder(process.env.RAZORPAY_KEY_ID) || isPlaceholder(process.env.RAZORPAY_KEY_SECRET)) return null;
 
   if (!razorpayClient) {
     razorpayClient = new Razorpay({
@@ -61,7 +75,7 @@ const createSubscription = async (req, res, next) => {
     const razorpay = getRazorpayClient();
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
-    if (razorpay && planId) {
+    if (razorpay && planId && !isPlaceholder(planId)) {
       const subscription = await razorpay.subscriptions.create({
         plan_id: planId,
         total_count: 12,
@@ -158,7 +172,7 @@ const cancelSubscription = async (req, res, next) => {
 /** POST /api/billing/webhook -> Razorpay webhook (raw body) */
 const handleWebhook = async (req, res, next) => {
   try {
-    if (!process.env.RAZORPAY_WEBHOOK_SECRET) {
+    if (!process.env.RAZORPAY_WEBHOOK_SECRET || isPlaceholder(process.env.RAZORPAY_WEBHOOK_SECRET)) {
       return sendApiError(res, 503, 'Webhook secret is not configured', 'WEBHOOK_NOT_CONFIGURED');
     }
 

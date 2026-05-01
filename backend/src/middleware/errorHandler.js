@@ -12,10 +12,11 @@ const errorHandler = (err, req, res, next) => {
   }
 
   const statusCode = err.statusCode || err.status || 500;
-  const message    = err.message || 'Internal Server Error';
-  const code       = err.code    || 'INTERNAL_ERROR';
+  const message = err.message || 'Internal Server Error';
+  const code = err.code || 'INTERNAL_ERROR';
+  const details = err.details;
 
-  return sendApiError(res, statusCode, message, code);
+  return sendApiError(res, statusCode, message, code, details);
 };
 
 module.exports = { errorHandler };

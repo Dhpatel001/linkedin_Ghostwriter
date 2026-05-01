@@ -26,7 +26,6 @@ export const metadata: Metadata = {
     title: 'VoicePost',
     description: 'AI LinkedIn ghostwriter that writes in your exact voice.',
   },
-  icons: { icon: '/favicon.ico' },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

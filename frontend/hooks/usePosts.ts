@@ -14,6 +14,9 @@ export interface Post {
     generatedAt: string;
     approvedAt?: string;
     postedAt?: string;
+    scheduledFor?: string | null;
+    imageUrl?: string | null;
+    imageGeneratedAt?: string | null;
     performance?: {
         impressions?: number;
         likes?: number;

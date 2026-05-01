@@ -16,6 +16,9 @@ import {
     MessageCircle,
     Save,
     RotateCcw,
+    ImageIcon,
+    Download,
+    Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
@@ -25,10 +28,10 @@ import { copyToClipboard, getLinkedInShareUrl } from '@/lib/linkedin';
 
 /* ─── Types ─────────────────────────────────────────────────── */
 interface PerformanceData {
-    impressions?: number;
-    likes?: number;
-    comments?: number;
-    shares?: number;
+    impressions?: number | null;
+    likes?: number | null;
+    comments?: number | null;
+    shares?: number | null;
 }
 
 interface PostCardProps {
@@ -38,7 +41,10 @@ interface PostCardProps {
     onEdit: (id: string, content: string) => Promise<void>;
     onMarkPosted: (id: string) => Promise<void>;
     onSavePerformance: (id: string, data: PerformanceData) => Promise<void>;
-    hidePerformance?: boolean; // true for Starter plan — performance tracker gated
+    onRewrite?: (id: string, content: string) => Promise<void>;
+    onSchedule?: (id: string, isoDate: string) => Promise<void>;
+    hidePerformance?: boolean;
+    canGenerateImage?: boolean;  // true for Scale/Global plan users
 }
 
 type InternalState = 'default' | 'scoring' | 'editing' | 'discard-confirm';
@@ -83,6 +89,16 @@ function TimeAgo({ date }: { date: string }) {
     );
 }
 
+function renderWithBoldMarkers(line: string) {
+    const parts = line.split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
+    return parts.map((part, idx) => {
+        if (/^\*\*[^*]+\*\*$/.test(part)) {
+            return <strong key={`${part}-${idx}`}>{part.slice(2, -2)}</strong>;
+        }
+        return <span key={`${part}-${idx}`}>{part}</span>;
+    });
+}
+
 /* ─── Main Component ────────────────────────────────────────── */
 export default function PostCard({
     post,
@@ -91,22 +107,34 @@ export default function PostCard({
     onEdit,
     onMarkPosted,
     onSavePerformance,
+    onRewrite,
+    onSchedule,
     hidePerformance = false,
+    canGenerateImage = false,
 }: PostCardProps) {
     const [internalState, setInternalState] = useState<InternalState>('default');
     const [isExpanded, setIsExpanded] = useState(false);
     const [editContent, setEditContent] = useState(post.editedContent ?? post.content);
     const [isBusy, setIsBusy] = useState(false);
-    const [performance, setPerformance] = useState<PerformanceData>(
-        post.performance ?? {}
-    );
+    const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+    const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(post.imageUrl ?? null);
+    const [performance, setPerformance] = useState<PerformanceData>(post.performance ?? {});
     const [perfSaved, setPerfSaved] = useState(false);
+    const [scheduleValue, setScheduleValue] = useState(
+        post.scheduledFor ? new Date(post.scheduledFor).toISOString().slice(0, 16) : ''
+    );
     const editRef = useRef<HTMLTextAreaElement>(null);
 
     const displayContent = post.editedContent ?? post.content;
-    const isLong = displayContent.length > 300;
-    const preview = isLong && !isExpanded ? displayContent.slice(0, 280) + '…' : displayContent;
     const statusStyle = getStatusStyle(post.status);
+
+    // Parse post into LinkedIn sections for structured rendering
+    const paragraphs = displayContent.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+    const hookPara = paragraphs[0] ?? '';
+    const bodyParas = paragraphs.slice(1, paragraphs.length > 2 ? -1 : undefined);
+    const ctaPara = paragraphs.length > 2 ? paragraphs[paragraphs.length - 1] : null;
+    const isLong = paragraphs.length > 3 || displayContent.length > 500;
+    const wordCount = displayContent.split(/\s+/).filter(Boolean).length;
 
     /* ─── Handlers ─────────────────────────────────────────────── */
     const handleApprove = async (score: number) => {
@@ -191,6 +219,48 @@ export default function PostCard({
         }
     };
 
+    const handleRewrite = async () => {
+        if (!onRewrite) return;
+        setIsBusy(true);
+        try {
+            await onRewrite(post._id, editContent || displayContent);
+            toast.success('Post polished for readability.');
+        } catch {
+            toast.error('Could not polish this post.');
+        } finally {
+            setIsBusy(false);
+        }
+    };
+
+    const handleSchedule = async () => {
+        if (!onSchedule || !scheduleValue) return;
+        setIsBusy(true);
+        try {
+            await onSchedule(post._id, new Date(scheduleValue).toISOString());
+            toast.success('Post scheduled.');
+        } catch {
+            toast.error('Could not schedule this post.');
+        } finally {
+            setIsBusy(false);
+        }
+    };
+
+    const handleGenerateImage = async () => {
+        setIsGeneratingImage(true);
+        try {
+            const res = await import('@/lib/api').then(m => m.default.post(`/api/posts/${post._id}/generate-image`));
+            const url = res.data?.data?.imageUrl;
+            if (url) {
+                setGeneratedImageUrl(url);
+                toast.success('Image generated! 🎨');
+            }
+        } catch {
+            toast.error('Image generation failed. Try again.');
+        } finally {
+            setIsGeneratingImage(false);
+        }
+    };
+
     /* ─── Render ────────────────────────────────────────────────── */
     return (
         <motion.div
@@ -214,13 +284,6 @@ export default function PostCard({
                 <TimeAgo date={post.generatedAt} />
             </div>
 
-            {/* ── Hook line ─────────────────────────────────────────── */}
-            {internalState !== 'editing' && (
-                <p className="font-semibold text-[15px] text-slate-900 leading-snug mb-2 line-clamp-2">
-                    {post.hook || displayContent.split('\n')[0]}
-                </p>
-            )}
-
             {/* ── Content area ──────────────────────────────────────── */}
             <AnimatePresence mode="wait">
                 {internalState === 'editing' ? (
@@ -236,33 +299,65 @@ export default function PostCard({
                             ref={editRef}
                             value={editContent}
                             onChange={(e) => setEditContent(e.target.value)}
-                            rows={8}
+                            rows={10}
                             autoFocus
-                            className="w-full text-sm text-slate-700 leading-relaxed bg-white border border-slate-300 rounded-[8px] p-3 resize-y focus:outline-none transition-shadow duration-150"
+                            className="w-full text-sm text-slate-700 leading-relaxed bg-white border border-slate-300 rounded-[8px] p-3 resize-y focus:outline-none transition-shadow duration-150 font-mono"
                             style={{
                                 boxShadow: '0 0 0 3px rgba(10,102,194,0.12), 0 1px 2px rgba(0,0,0,0.05)',
                             }}
-                            placeholder="Edit your post content here…"
+                            placeholder="Edit your post content here… (Use two blank lines between sections for proper formatting)"
                         />
-                        <p className="text-xs text-slate-400 mt-1 text-right">
-                            {editContent.length} chars
-                        </p>
+                        <div className="flex items-center justify-between mt-1.5">
+                            <p className="text-xs text-slate-400">
+                                Tip: Use 2 blank lines between sections for proper LinkedIn formatting
+                            </p>
+                            <p className="text-xs text-slate-400 shrink-0 ml-3">
+                                {editContent.split(/\s+/).filter(Boolean).length} words · {editContent.length} chars
+                            </p>
+                        </div>
                     </motion.div>
                 ) : (
-                    /* Read mode */
-                    <motion.div key="content" layout>
-                        <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
-                            {preview}
+                    /* Read mode — structured LinkedIn layout */
+                    <motion.div key="content" layout className="space-y-3">
+                        {/* Hook — scroll-stopping opener, displayed prominently */}
+                        <p className="font-semibold text-[15px] text-slate-900 leading-snug">
+                            {hookPara.split('\n').map((line, i) => (
+                                <span key={i}>{renderWithBoldMarkers(line)}{i < hookPara.split('\n').length - 1 && <br />}</span>
+                            ))}
                         </p>
+
+                        {/* Body paragraphs — only shown when expanded or short post */}
+                        {(isExpanded || !isLong) && bodyParas.map((para, i) => (
+                            <p key={i} className="text-sm text-slate-600 leading-relaxed">
+                                {para.split('\n').map((line, j) => {
+                                    const isBullet = /^\s*([-*\u2022]|\d+\.)/.test(line);
+                                    return (
+                                        <span key={j} className={isBullet ? 'flex items-start gap-2' : 'block'}>
+                                            {isBullet && <span className="text-linkedin mt-0.5 shrink-0">▸</span>}
+                                            <span>{renderWithBoldMarkers(isBullet ? line.replace(/^\s*([-*\u2022]|\d+\.)\s*/, '') : line)}</span>
+                                            {j < para.split('\n').length - 1 && !isBullet && <br />}
+                                        </span>
+                                    );
+                                })}
+                            </p>
+                        ))}
+
+                        {/* CTA — engagement trigger, subtle highlight */}
+                        {ctaPara && (isExpanded || !isLong) && (
+                            <p className="text-sm text-slate-500 italic border-l-2 border-linkedin/30 pl-3 leading-relaxed">
+                                {renderWithBoldMarkers(ctaPara)}
+                            </p>
+                        )}
+
                         {isLong && (
                             <button
                                 onClick={() => setIsExpanded(!isExpanded)}
-                                className="flex items-center gap-1 mt-1.5 text-xs font-medium text-linkedin hover:text-linkedin-hover transition-colors duration-150"
+                                className="flex items-center gap-1 mt-1 text-xs font-semibold text-linkedin hover:text-linkedin-hover transition-colors duration-150"
                             >
                                 {isExpanded ? (
                                     <><ChevronUp className="w-3 h-3" />Show less</>
                                 ) : (
-                                    <><ChevronDown className="w-3 h-3" />Show more</>
+                                    <><ChevronDown className="w-3 h-3" />Read full post ({wordCount} words)</>
                                 )}
                             </button>
                         )}
@@ -374,6 +469,15 @@ export default function PostCard({
                                     <Pencil className="w-3.5 h-3.5" />
                                     Edit
                                 </button>
+                                {onRewrite && (
+                                    <button
+                                        onClick={handleRewrite}
+                                        disabled={isBusy}
+                                        className="flex items-center gap-1.5 py-2 px-3 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 hover:bg-violet-100 rounded-[6px] transition-all duration-150 active:scale-[0.97] disabled:opacity-60"
+                                    >
+                                        Polish
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => setInternalState('discard-confirm')}
                                     className="flex items-center gap-1.5 py-2 px-3 text-sm font-medium text-red-500 bg-white border border-slate-200 hover:bg-red-50 hover:border-red-200 rounded-[6px] transition-all duration-150 active:scale-[0.97] ml-auto"
@@ -418,6 +522,23 @@ export default function PostCard({
                             <BookmarkCheck className="w-3.5 h-3.5" />
                             {isBusy ? 'Saving…' : 'Mark as posted'}
                         </button>
+                        {onSchedule && (
+                            <div className="w-full flex items-center gap-2 mt-2">
+                                <input
+                                    type="datetime-local"
+                                    value={scheduleValue}
+                                    onChange={(e) => setScheduleValue(e.target.value)}
+                                    className="rounded-[6px] border border-slate-200 px-2 py-1.5 text-xs text-slate-700"
+                                />
+                                <button
+                                    onClick={handleSchedule}
+                                    disabled={isBusy || !scheduleValue}
+                                    className="py-1.5 px-3 text-xs font-semibold text-linkedin border border-linkedin/20 bg-linkedin-light rounded-[6px] disabled:opacity-60"
+                                >
+                                    Schedule
+                                </button>
+                            </div>
+                        )}
                     </motion.div>
                 )}
 
@@ -508,6 +629,61 @@ export default function PostCard({
                 )}
 
             </AnimatePresence>
+
+            {/* ── Image generation (Scale/Global only) ─────────────── */}
+            {canGenerateImage && (post.status === 'pending' || post.status === 'approved') && (
+                <div className="mt-4">
+                    {generatedImageUrl ? (
+                        <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            className="rounded-[10px] overflow-hidden border border-slate-200"
+                        >
+                            <img
+                                src={generatedImageUrl}
+                                alt="AI generated post image"
+                                className="w-full object-cover max-h-60"
+                            />
+                            <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-t border-slate-100">
+                                <p className="text-xs text-slate-500">AI-generated cover image</p>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={handleGenerateImage}
+                                        disabled={isGeneratingImage}
+                                        className="text-xs text-slate-400 hover:text-slate-700 transition-colors duration-150 flex items-center gap-1"
+                                    >
+                                        <RotateCcw className="w-3 h-3" />
+                                        Regenerate
+                                    </button>
+                                    <a
+                                        href={generatedImageUrl}
+                                        download="post-image.svg"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs text-linkedin hover:text-linkedin-hover transition-colors duration-150 flex items-center gap-1"
+                                    >
+                                        <Download className="w-3 h-3" />
+                                        Download SVG
+                                    </a>
+                                </div>
+                            </div>
+                        </motion.div>
+                    ) : (
+                        <button
+                            onClick={handleGenerateImage}
+                            disabled={isGeneratingImage}
+                            className="w-full flex items-center justify-center gap-2 py-2 px-4 text-sm font-medium text-linkedin-hover bg-linkedin-light border border-linkedin/20 hover:bg-[#dcecfb] rounded-[8px] transition-all duration-150 active:scale-[0.98] disabled:opacity-60"
+                        >
+                            {isGeneratingImage ? (
+                                <><Loader2 className="w-3.5 h-3.5 animate-spin" />Generating image…</>
+                            ) : (
+                                <><ImageIcon className="w-3.5 h-3.5" />Generate branded image <span className="text-[10px] font-bold px-1.5 py-0.5 bg-linkedin/15 text-linkedin-hover rounded-full ml-1">SCALE</span></>
+                            )}
+                        </button>
+                    )}
+                </div>
+            )}
+
         </motion.div>
     );
 }
@@ -521,8 +697,8 @@ function PerformanceInput({
 }: {
     icon: React.ReactNode;
     placeholder: string;
-    value: number | string;
-    onChange: (v: number) => void;
+    value: number | string | null;
+    onChange: (v: number | null) => void;
 }) {
     return (
         <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-[6px] px-2 py-1.5 focus-within:border-linkedin/40 transition-colors duration-150 w-32">
@@ -531,8 +707,8 @@ function PerformanceInput({
                 type="number"
                 min={0}
                 placeholder={placeholder}
-                value={value}
-                onChange={(e) => onChange(Number(e.target.value))}
+                value={value ?? ''}
+                onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
                 className="w-full text-sm text-slate-700 bg-transparent focus:outline-none placeholder:text-slate-300 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
             />
         </div>

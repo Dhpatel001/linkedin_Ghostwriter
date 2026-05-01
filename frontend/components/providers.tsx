@@ -16,9 +16,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
                 errorRetryInterval: 5000,
                 dedupingInterval: 2000,
                 onError: (error) => {
-                    // 401/402 are handled by the axios interceptor — don't log them
+                    // Auth/subscription redirects are handled by the axios interceptor.
                     const status = error?.response?.status;
-                    if (status !== 401 && status !== 402) {
+                    const code = error?.response?.data?.code;
+                    const isHandledSubscriptionError =
+                        status === 403 &&
+                        ['SUBSCRIPTION_REQUIRED', 'PLAN_RESTRICTED'].includes(code);
+
+                    if (status !== 401 && status !== 402 && !isHandledSubscriptionError) {
                         console.error('[swr]', error?.message ?? error);
                     }
                 },

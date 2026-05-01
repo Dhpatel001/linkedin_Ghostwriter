@@ -8,6 +8,7 @@
 [![Next.js](https://img.shields.io/badge/Next.js-14-000000?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://www.mongodb.com)
+[![Claude AI](https://img.shields.io/badge/Claude-Anthropic-8A2BE2?style=for-the-badge&logo=anthropic&logoColor=white)](https://anthropic.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
 [Features](#-features) · [Tech Stack](#-tech-stack) · [Architecture](#-architecture) · [Getting Started](#-getting-started-locally) · [Environment Variables](#-environment-variables) · [API Reference](#-api-reference) · [Contributing](#-contributing)
@@ -20,7 +21,7 @@
 
 **VoicePost** is a production-ready, full-stack SaaS application built for **founders, consultants, coaches, and creators** who want to dominate LinkedIn — without spending hours writing every week.
 
-The platform connects to your LinkedIn account, **analyzes your past posts** to build a unique AI *Voice Profile*, and then **auto-generates 3 high-quality, on-brand posts every week** — delivered straight to your approval dashboard. You review, edit, and approve. The AI learns from your feedback and gets sharper over time.
+The platform connects to your LinkedIn account, **analyzes your past posts** to build a unique AI *Voice Profile*, and then **auto-generates high-quality, on-brand posts** — delivered straight to your approval dashboard. You review, edit, and approve. The AI learns from your feedback and gets sharper over time.
 
 > **Think of it as a ghostwriter that never sleeps, never charges per word, and knows your voice better than you do.**
 
@@ -31,8 +32,12 @@ The platform connects to your LinkedIn account, **analyzes your past posts** to 
 | Feature | Description |
 |---|---|
 | 🧠 **Voice Fingerprinting** | Paste 5–15 of your past posts. The AI analyzes your vocabulary, sentence rhythm, opening hooks, and formatting habits to build a proprietary *Voice Profile*. |
-| 📬 **Weekly Post Automation** | 3 fully-written posts land in your dashboard every Monday morning — ready for your review. |
-| ✅ **Approve / Edit / Discard** | A clean Kanban-style review interface. Rate posts out of 10 to fuel the AI feedback loop. |
+| 📝 **Hook-Body-Lesson-CTA Framework** | Every generated post follows a proven LinkedIn content structure — an arresting hook, a substantive body, a key takeaway, and a compelling call-to-action. |
+| 🖼️ **Professional SVG Image Generation** | Multi-style AI-designed visuals (data, quote, story, framework cards) generated natively as scalable SVG assets — no stock photos, no generic AI art. |
+| 🔍 **LinkedIn Report Analysis** | Ingests your real LinkedIn analytics (impressions, engagement, follower growth) and uses them to optimize future content strategy. |
+| ✨ **Post Enhancement Engine** | One-click enhancement to punch up hooks, sharpen calls-to-action, and improve readability before you approve. |
+| 📬 **Weekly Post Automation** | Fully-written posts land in your dashboard every Monday morning — ready for your review. |
+| ✅ **Approve / Edit / Discard** | A clean review interface. Rate posts out of 10 to fuel the AI feedback loop. |
 | 🔗 **1-Click LinkedIn OAuth** | Secure, scoped LinkedIn OAuth 2.0 login. No password stored, ever. |
 | 🔥 **Streak Tracker & Analytics** | Track consecutive posting weeks and save performance metrics (impressions, likes, comments) directly in the app. |
 | 💳 **Subscription Tiers** | Starter, Pro, and Scale plans with Razorpay-powered billing, webhook handling, and subscription lifecycle management. |
@@ -61,7 +66,7 @@ The platform connects to your LinkedIn account, **analyzes your past posts** to 
 | **MongoDB + Mongoose** | Primary database and ODM |
 | **LinkedIn OAuth v2** | Authentication and profile access |
 | **JWT (HttpOnly Cookies)** | Stateless, secure session management |
-| **Anthropic Claude API** | Voice analysis and post generation |
+| **Anthropic Claude API** | Voice analysis, post generation, and content enhancement |
 | **Razorpay** | Subscription billing, webhooks, plan management |
 | **Upstash Redis** | Rate limiting and caching layer |
 | **node-cron** | Scheduled weekly post generation jobs |
@@ -75,37 +80,75 @@ The platform connects to your LinkedIn account, **analyzes your past posts** to 
 linkedin_Ghostwriter/
 ├── backend/
 │   ├── src/
-│   │   ├── config/          # DB, Redis, and service configuration
-│   │   ├── controllers/     # Route handler logic (auth, posts, voice, billing)
-│   │   ├── middleware/      # Auth guard, rate limiter, error handler
-│   │   ├── models/          # Mongoose schemas (User, Post, VoiceProfile)
-│   │   ├── routes/          # Express routers (auth, posts, voice, billing)
-│   │   ├── services/        # AI service, email service, cron scheduler
-│   │   └── server.js        # Express app entrypoint
-│   ├── jobs/                # Standalone cron job definitions
-│   ├── .env.example         # Environment variable template
+│   │   ├── config/                 # DB, Redis, and service configuration
+│   │   ├── controllers/            # Route handler logic (auth, posts, voice, billing)
+│   │   ├── middleware/             # Auth guard, subscription check, rate limiter, error handler
+│   │   ├── models/                 # Mongoose schemas (User, Post, VoiceProfile)
+│   │   ├── routes/                 # Express routers (auth, posts, voice, billing)
+│   │   ├── services/
+│   │   │   ├── voiceService.js     # 🧠 Core AI engine — voice analysis & post generation
+│   │   │   ├── imageService.js     # 🖼️  SVG image generation (data/quote/story/framework)
+│   │   │   ├── postEnhancementService.js # ✨ Hook & CTA sharpening
+│   │   │   ├── linkedinReportService.js  # 📊 LinkedIn analytics ingestion & strategy
+│   │   │   ├── generateService.js  # Orchestration layer for content pipelines
+│   │   │   ├── billingService.js   # Razorpay subscription management
+│   │   │   ├── emailService.js     # Resend transactional emails
+│   │   │   └── linkedinService.js  # LinkedIn API integration
+│   │   └── server.js               # Express app entrypoint
+│   ├── .env.example                # Environment variable template
 │   └── package.json
 │
 ├── frontend/
 │   ├── app/
-│   │   ├── (landing)/       # Public marketing page
-│   │   ├── auth/            # OAuth callback handler
-│   │   ├── dashboard/       # Main post review dashboard
-│   │   ├── onboarding/      # Voice profile setup wizard
-│   │   ├── billing/         # Subscription & plan management
-│   │   ├── settings/        # User account settings
-│   │   ├── linkedin/        # LinkedIn OAuth redirect handler
-│   │   ├── contact/         # Contact page
-│   │   ├── privacy/         # Privacy policy
-│   │   └── terms/           # Terms of service
-│   ├── components/          # Reusable UI components
-│   ├── hooks/               # Custom React hooks
-│   ├── lib/                 # Shared utilities and API client
-│   ├── middleware.ts         # Next.js auth & routing middleware
+│   │   ├── (landing)/              # Public marketing page
+│   │   ├── auth/                   # OAuth callback handler
+│   │   ├── dashboard/              # Main post review dashboard
+│   │   ├── onboarding/             # Voice profile setup wizard
+│   │   ├── billing/                # Subscription & plan management
+│   │   ├── settings/               # User account settings
+│   │   ├── linkedin/               # LinkedIn OAuth redirect handler
+│   │   ├── contact/                # Contact page
+│   │   ├── privacy/                # Privacy policy
+│   │   └── terms/                  # Terms of service
+│   ├── components/                 # Reusable UI components (PostCard, providers…)
+│   ├── hooks/
+│   │   ├── useUser.ts              # Auth state & user profile
+│   │   ├── usePosts.ts             # Post CRUD & approval workflow
+│   │   ├── useVoiceProfile.ts      # Voice profile fetch & status
+│   │   └── useInsights.ts          # Analytics data fetching
+│   ├── lib/                        # Shared utilities and API client
+│   ├── middleware.ts               # Next.js auth & routing middleware
 │   └── package.json
 │
 └── README.md
 ```
+
+---
+
+## 🤖 AI Content Engine
+
+The AI pipeline is the heart of VoicePost and runs in several stages:
+
+### 1. Voice Analysis (`voiceService.js`)
+- Accepts 5–15 sample posts from the user
+- Uses Claude to extract: vocabulary fingerprint, sentence rhythm, hook patterns, tone, formatting style, and favourite topics
+- Stores the resulting **Voice Profile** in MongoDB for use across all future generation
+
+### 2. Content Generation (Hook-Body-Lesson-CTA)
+- Every post is structured around the **Hook → Body → Lesson → CTA** framework — the gold standard for high-performing LinkedIn content
+- The generator references the user's Voice Profile so output sounds authentically human, not "AI-written"
+
+### 3. Post Enhancement (`postEnhancementService.js`)
+- Optional one-click improvement pass: sharpens the opening hook, improves the CTA, and tightens the copy
+- Runs as a separate API call so users stay in control
+
+### 4. SVG Image Generation (`imageService.js`)
+- Generates professional, on-brand visual assets as pure SVG (no raster images, no third-party APIs)
+- Supports four card styles: **Data Card**, **Quote Card**, **Story Card**, and **Framework Card**
+
+### 5. LinkedIn Report Analysis (`linkedinReportService.js`)
+- Users can paste their LinkedIn analytics CSV / dashboard data
+- Claude extracts performance trends and feeds them back into the generation strategy
 
 ---
 
@@ -213,8 +256,10 @@ All API routes are prefixed with `/api`.
 | `PATCH` | `/api/posts/:id/approve` | ✅ | Approve a generated post |
 | `PATCH` | `/api/posts/:id/discard` | ✅ | Discard a generated post |
 | `PATCH` | `/api/posts/:id/rate` | ✅ | Submit a quality rating for a post |
+| `POST` | `/api/posts/:id/enhance` | ✅ | Enhance a post's hook, CTA, and readability |
 | `POST` | `/api/voice/analyze` | ✅ | Submit sample posts for voice analysis |
 | `GET` | `/api/voice/profile` | ✅ | Retrieve the user's Voice Profile |
+| `POST` | `/api/voice/linkedin-report` | ✅ | Submit LinkedIn analytics for strategy optimization |
 | `POST` | `/api/billing/create-subscription` | ✅ | Create a Razorpay subscription |
 | `POST` | `/api/billing/webhook` | ❌ | Razorpay webhook handler |
 | `GET` | `/api/billing/status` | ✅ | Get current subscription status |

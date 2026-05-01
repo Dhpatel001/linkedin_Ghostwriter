@@ -8,6 +8,7 @@ const {
   generateFromVoice,
   getVoiceProfile,
   analyzeProfile,
+  analyzeProfileArtifacts,
   saveVoiceProfile,
   updateTopics,
   regenerateProfile,
@@ -42,6 +43,19 @@ router.post(
   voiceGenerationRateLimit,
   [body('samplePosts').optional().isArray({ min: 1, max: 50 }), body('topics').optional().isArray({ max: 20 }), validateRequest],
   analyzeProfile
+);
+router.post(
+  '/analyze-artifacts',
+  authenticate,
+  checkSubscription,
+  voiceGenerationRateLimit,
+  [
+    body('samplePosts').optional().isArray({ max: 50 }),
+    body('topics').optional().isArray({ max: 20 }),
+    body('images').optional().isArray({ max: 8 }),
+    validateRequest,
+  ],
+  analyzeProfileArtifacts
 );
 router.patch(
   '/topics',

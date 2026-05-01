@@ -17,6 +17,7 @@ export interface User {
     name: string;
     email: string;
     profileImageUrl?: string;
+    linkedinTokenExpiry?: string | null;
     headline?: string;
     subscriptionStatus: SubscriptionStatus;
     subscriptionTier: SubscriptionTier;
@@ -33,15 +34,19 @@ export interface User {
 export const PLAN_LIMITS: Record<string, {
     postsPerWeek: number;
     performanceTracker: boolean;
+    imageGeneration: boolean;
+    copilotInsights: boolean;
+    contentCalendar: boolean;
+    teamWorkspace: boolean;
     label: string;
     price: string;
 }> = {
-    trial: { postsPerWeek: 3, performanceTracker: false, label: 'Free Trial', price: '₹0' },
-    starter: { postsPerWeek: 2, performanceTracker: false, label: 'Starter', price: '₹999/mo' },
-    pro: { postsPerWeek: 3, performanceTracker: true, label: 'Pro', price: '₹1,999/mo' },
-    scale: { postsPerWeek: 5, performanceTracker: true, label: 'Scale', price: '₹4,999/mo' },
-    global: { postsPerWeek: 3, performanceTracker: true, label: 'Global', price: '$29/mo' },
-    none: { postsPerWeek: 0, performanceTracker: false, label: 'No plan', price: '—' },
+    trial:   { postsPerWeek: 3, performanceTracker: false, imageGeneration: false, copilotInsights: false, contentCalendar: false, teamWorkspace: false, label: 'Free Trial',  price: '₹0'       },
+    starter: { postsPerWeek: 2, performanceTracker: false, imageGeneration: false, copilotInsights: false, contentCalendar: false, teamWorkspace: false, label: 'Starter',     price: '₹999/mo'  },
+    pro:     { postsPerWeek: 3, performanceTracker: true,  imageGeneration: false, copilotInsights: true,  contentCalendar: true,  teamWorkspace: false, label: 'Pro',         price: '₹1,999/mo'},
+    scale:   { postsPerWeek: 5, performanceTracker: true,  imageGeneration: true,  copilotInsights: true,  contentCalendar: true,  teamWorkspace: true,  label: 'Scale',       price: '₹4,999/mo'},
+    global:  { postsPerWeek: 5, performanceTracker: true,  imageGeneration: true,  copilotInsights: true,  contentCalendar: true,  teamWorkspace: true,  label: 'Global',      price: '$29/mo'   },
+    none:    { postsPerWeek: 0, performanceTracker: false, imageGeneration: false, copilotInsights: false, contentCalendar: false, teamWorkspace: false, label: 'No plan',     price: '—'        },
 };
 
 /* ─── Derived helpers ────────────────────────────────────────── */
@@ -53,6 +58,10 @@ export function getPlanKey(user: User | undefined): string {
 
 export function canUsePerformanceTracker(user: User | undefined): boolean {
     return PLAN_LIMITS[getPlanKey(user)]?.performanceTracker ?? false;
+}
+
+export function canUseImageGeneration(user: User | undefined): boolean {
+    return PLAN_LIMITS[getPlanKey(user)]?.imageGeneration ?? false;
 }
 
 export function getPostsPerWeek(user: User | undefined): number {
@@ -106,6 +115,7 @@ export function useUser() {
         // Derived
         planKey: getPlanKey(data),
         canUsePerformanceTracker: canUsePerformanceTracker(data),
+        canUseImageGeneration: canUseImageGeneration(data),
         postsPerWeek: getPostsPerWeek(data),
         trialDaysLeft: getTrialDaysLeft(data),
         isSubscribed: isSubscribed(data),

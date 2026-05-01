@@ -11,14 +11,18 @@ api.interceptors.response.use(
     (res) => res,
     (err) => {
         const status = err.response?.status;
+        const code = err.response?.data?.code;
         if (status === 401) {
             // Session expired — send to login, not home
             if (typeof window !== 'undefined') {
                 window.location.href = '/login?error=session_expired';
             }
         }
-        if (status === 402) {
-            // Trial ended or subscription required
+        if (
+            status === 402 ||
+            (status === 403 && ['SUBSCRIPTION_REQUIRED', 'PLAN_RESTRICTED'].includes(code))
+        ) {
+            // Subscription or plan restriction — send users to billing
             if (typeof window !== 'undefined') {
                 window.location.href = '/billing?reason=trial_ended';
             }

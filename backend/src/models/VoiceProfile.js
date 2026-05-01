@@ -21,7 +21,7 @@ const VoiceProfileSchema = new mongoose.Schema({
     enum: ['short', 'medium', 'long'],
     default: 'medium',
   },
-  avgWordCount:     { type: Number, default: 180, min: 50, max: 1000 },
+  avgWordCount:     { type: Number, default: 180, min: 0, max: 1000 },
   usesEmoji:        { type: Boolean, default: false },
   usesBulletPoints: { type: Boolean, default: false },
 
